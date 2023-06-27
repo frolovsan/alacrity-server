@@ -5,6 +5,24 @@ const morgan = require('morgan');
 const path = require('path');
 require('dotenv').config();
 const { Game, Stand } = require('./db/models');
+const fs = require('fs');
+
+//MULTER
+const destinationFolder = 'uploads';
+
+if (!fs.existsSync(destinationFolder)) {
+  fs.mkdirSync(destinationFolder, { recursive: true });
+}
+
+const multer = require('multer');
+const storage = multer.diskStorage({
+  destination: 'uploads/',
+  filename: function (req, file, cb) {
+    cb(null, `${Date.now()}_${file.originalname}`);
+  },
+});
+
+const upload = multer({ storage: storage }).single('photo');
 
 //TG BOT
 const TelegramApi = require('node-telegram-bot-api');
@@ -25,8 +43,6 @@ const start = async () => {
         const response = await Stand.findAll();
         const stands = response.map((el) => el.get({ plain: true }));
 
-        console.log('Айпи школьника', chatId);
-
         const standList = {
           list: {
             reply_markup: JSON.stringify({
@@ -45,6 +61,25 @@ const start = async () => {
     } catch (e) {
       return bot.sendMessage(chatId, 'Ошибка');
     }
+  });
+
+  bot.on('photo', (msg) => {
+    const chatId = msg.chat.id;
+  
+    bot.getFileLink(msg.photo[0].file_id).then((fileUrl) => {
+      fetch(fileUrl)
+        .then((response) => response.arrayBuffer())
+        .then((arrayBuffer) => {
+          const buffer = Buffer.from(arrayBuffer);
+          const savePath = path.join(destinationFolder, 'photo.jpg');
+          fs.writeFileSync(savePath, buffer);
+          bot.sendMessage(chatId, 'Photo saved successfully!');
+        })
+        .catch((error) => {
+          console.error('Error downloading photo:', error);
+          bot.sendMessage(chatId, 'Error downloading photo. Please try again.');
+        });
+    });
   });
 
   bot.on('callback_query', async (msg) => {
